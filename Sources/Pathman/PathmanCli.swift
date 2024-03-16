@@ -15,8 +15,11 @@ struct AddCommand: ParsableCommand {
     @Argument(help: "Directory to add to the PATH")
     var path: String
     
+    @Flag(name: .shortAndLong, help: "Disable automatic sourcing of the RC file after adding PATH")
+    var noSource: Bool = false
+    
     func run() throws {
-        PathmanCli.shared.addPath(directory: path)
+        PathmanCli.shared.addPath(directory: path, sourcing: noSource)
     }
 }
 
@@ -28,8 +31,11 @@ struct RemoveCommand: ParsableCommand {
     @Argument(help: "Directory to remove from the PATH")
     var path: String
     
+    @Flag(name: .shortAndLong, help: "Disable automatic sourcing of the RC file after adding PATH")
+    var noSource: Bool = false
+    
     func run() throws {
-        PathmanCli.shared.removeFromPath(directory: path)
+        PathmanCli.shared.removeFromPath(directory: path, sourcing: noSource)
     }
 }
 

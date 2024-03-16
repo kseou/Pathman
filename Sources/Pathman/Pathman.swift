@@ -87,16 +87,19 @@ extension Pathman {
 // MARK: - Public Methods
 
 extension Pathman {
-    func addPath(directory: String) {
+    func addPath(directory: String, sourcing: Bool) {
         var content = readRcFile(from: filePath)
         let newPathLine = "\nexport PATH=\"\(directory):$PATH\""
         content.append(newPathLine)
         writeRcFile(content: content)
-        runCmd("source \(filePath)")
         print("Directory added to PATH in \(shell.rcFileName)")
+        if (!sourcing) {
+            runCmd("source \(filePath)")
+            print("Sourcing \(filePath) ...")
+        }
     }
     
-    func removeFromPath(directory: String) {
+    func removeFromPath(directory: String, sourcing: Bool) {
         var content = readRcFile(from: filePath)
         let pathPrefix = "export PATH=\""
         let pathSuffix = ":$PATH\""
@@ -116,7 +119,10 @@ extension Pathman {
             .trimmingCharacters(in: .whitespacesAndNewlines)
         
         writeRcFile(content: finalContent)
-        runCmd("source \(filePath)")
         print("Directory removed from PATH in \(shell.rcFileName)")
+        if (!sourcing) {
+            runCmd("source \(filePath)")
+            print("Sourcing \(filePath) ...")
+        }
     }
 }
