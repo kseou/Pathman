@@ -16,7 +16,7 @@ I wanted to create a small toy project that helps me combat my laziness. I wante
 as these are the two shells I use most on my Mac device and Linux laptop. There are better ways of doing it, but this one is mine.
 
 ## TODO
-- ~~Add automatic sourcing of RC file after removing or adding path. Few tests resulted in errors from the shell.~~ Sourcing file is now done automatically when adding or removing path. Add optiont to disable?
+- ~~Add automatic sourcing of RC file after removing or adding path. Few tests resulted in errors from the shell.~~ Sourcing file is now done automatically when adding or removing path. User can skip sourcing by passing flag --skip-source after the path
 - Add config file that helps Pathman determine custom RC files to manage (TOML? YAML?)
 - Create backup on demand of RC file or custom RC file
 - Add support for different environment variables? (LD_LIBRARY_PATH, PKG_CONFIG_PATH)
