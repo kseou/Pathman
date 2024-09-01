@@ -6,7 +6,7 @@ Welcome to Pathman, your friendly neighborhood UNIX shell configuration manager!
 
 - **Easy Shell Setup**: Pathman is able to detect what shell is being used (as long as its the one that is supported). It can read, modify and save your shell config files (.bashrc, .zshrc) without setting it up.
 
-- **Add or Remove Directories**: Simply add or remove directories from your `PATH` environment variable within your shell configuration files
+- **Add or Remove Directories**: Simply add or remove directories from your `PATH` environment variable within your shell configuration files. Pathman will check for duplicate entries!
 
 ## But why?
 
