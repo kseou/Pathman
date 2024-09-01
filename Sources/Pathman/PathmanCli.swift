@@ -3,6 +3,7 @@
 //
 //
 //  Created by KSeou on 08/03/2024.
+//  Edited by kseou on 01/09/2024.
 //
 
 import ArgumentParser
@@ -15,8 +16,11 @@ struct AddCommand: ParsableCommand {
     @Argument(help: "Directory to add to the PATH")
     var path: String
     
+    @Flag(name: .long, help: "Skip sourcing the RC file after modification")
+    var skipSource = false
+    
     func run() throws {
-        PathmanCli.shared.addPath(directory: path)
+        try PathmanCli.shared.addToPath(path, sourcing: !skipSource)
     }
 }
 
@@ -28,14 +32,24 @@ struct RemoveCommand: ParsableCommand {
     @Argument(help: "Directory to remove from the PATH")
     var path: String
     
+    @Flag(name: .long, help: "Skip sourcing the RC file after modification")
+    var skipSource = false
+    
     func run() throws {
-        PathmanCli.shared.removeFromPath(directory: path)
+        try PathmanCli.shared.removeFromPath(path, sourcing: !skipSource)
     }
 }
 
 @main
 struct PathmanCli: ParsableCommand {
-    static var shared: Pathman = Pathman()
+    static let shared: Pathman = {
+            do {
+                return try Pathman()
+            } catch {
+                fatalError("Failed to initialize Pathman: \(error.localizedDescription)")
+            }
+        }()
+    
     static var configuration = CommandConfiguration(
         commandName: "pathman",
         abstract: "Pathman is a little tool that helps you manage your shell RC files with ease, focusing on making your life a tad simpler when it comes to handling the PATH environment variable.",

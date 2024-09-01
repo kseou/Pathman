@@ -2,121 +2,143 @@
 //  Pathman.swift
 //
 //
-//  Created by KSeou on 07/03/2024.
+//  Created by kseou on 07/03/2024.
+//  Edited by kseou on 01/09/2024.
 //
 
 import Foundation
 
-enum Shell {
-    case bash
-    case zsh
+
+// MARK: - Shell Enum
+
+enum Shell: String, CaseIterable {
+    case bash, zsh
     
-    var rcFileName: String {
-        switch self{
-        case .bash:
-            return ".bashrc"
-        case .zsh:
-            return ".zshrc"
-        }
+    var rcFileName: String { ".\(rawValue)rc" }
+    
+    static func from(shellPath: String) -> Shell? {
+        allCases.first { shellPath.hasSuffix($0.rawValue) }
     }
-    
-    static func fromShellPath(_ shellPath: String) -> Shell? {
-        switch shellPath {
-        case _ where shellPath.hasSuffix("/bash"):
-            return .bash
-        case _ where shellPath.hasSuffix("/zsh"):
-            return .zsh
-        default:
-            return nil
-        }
-    }
-    
 }
+
+// MARK: - Pathman Error
+
+enum PathmanError: Error, LocalizedError {
+    case shellNotFound
+    case directoryNotFound(String)
+    case sourceFailure(String)
+    
+    var errorDescription: String? {
+        switch self {
+        case .shellNotFound:
+            return "SHELL environment variable not found or unsupported"
+        case .directoryNotFound(let directory):
+            return "Failed to remove directory '\(directory)' from PATH: Directory not found in PATH"
+        case .sourceFailure(let reason):
+            return "Failed to source RC file: \(reason)"
+        }
+    }
+}
+
+// MARK: - Pathman Implementation
 
 struct Pathman {
-    private var home: String
-    private var shell: Shell
+    private let fileManager: FileManager
+    private let shell: Shell
     private let filePath: String
     
-    init() {
-        self.home = FileManager.default.homeDirectoryForCurrentUser.relativePath
-        guard let shellPath = ProcessInfo.processInfo.environment["SHELL"], let shell = Shell.fromShellPath(shellPath) else { fatalError("ERROR: SHELL Environment variable not found!") }
-        self.shell = shell
-        self.filePath = "\(home)/\(shell.rcFileName)"
+    init(fileManager: FileManager = .default) throws {
+        self.fileManager = fileManager
+        let home = fileManager.homeDirectoryForCurrentUser.path
+        
+        guard let shellPath = ProcessInfo.processInfo.environment["SHELL"],
+              let detectedShell = Shell.from(shellPath: shellPath) else {
+            throw PathmanError.shellNotFound
+        }
+        shell = detectedShell
+        filePath = "\(home)/\(shell.rcFileName)"
     }
-}
-
-// MARK: - Private Helper Methods
-
-extension Pathman {
-    private func readRcFile(from filePath: String) -> String {
-        if let result = try? String(contentsOfFile: filePath) {
-            return result
-        } else {
-            fatalError("Error: Failed to read from file \(filePath).")
+    
+    func addToPath(_ directory: String, sourcing: Bool) throws {
+        try modifyPath(action: .add(directory), sourcing: sourcing)
+    }
+    
+    func removeFromPath(_ directory: String, sourcing: Bool) throws {
+        try modifyPath(action: .remove(directory), sourcing: sourcing)
+    }
+    
+    private enum PathAction {
+        case add(String)
+        case remove(String)
+        
+        var directory: String {
+            switch self {
+            case .add(let dir), .remove(let dir):
+                return dir
+            }
         }
     }
     
-    private func writeRcFile(content: String) {
-        if let result = try? content.write(toFile: filePath, atomically: true, encoding: .utf8) {
-            return result
-        } else {
-            fatalError("Error: Failed to write to file \(shell.rcFileName).")
+    private func modifyPath(action: PathAction, sourcing: Bool) throws {
+        let url = URL(fileURLWithPath: filePath)
+        var content = try String(contentsOf: url)
+        
+        switch action {
+        case .add(let directory):
+            if isDirectoryInPath(directory, content: content) {
+                print("Directory '\(directory)' is already in PATH. No changes made.")
+                return
+            }
+            content += "\nexport PATH=\"\(directory):$PATH\""
+            print("Directory added to PATH in \(shell.rcFileName)")
+        case .remove:
+            guard let range = content.range(of: "export PATH=\".*\(action.directory):.*\"", options: .regularExpression) else {
+                throw PathmanError.directoryNotFound(action.directory)
+            }
+            content.removeSubrange(range)
+            content = content
+                .replacingOccurrences(of: "export PATH=\":$PATH\"", with: "")
+                .replacingOccurrences(of: "\n+", with: "\n", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            print("Directory removed from PATH in \(shell.rcFileName)")
         }
+        
+        try content.write(to: url, atomically: true, encoding: .utf8)
+        
+        if sourcing {
+            do {
+                try runCmd("source \(filePath)")
+                print("Sourced \(filePath) successfully")
+            } catch {
+                throw PathmanError.sourceFailure(error.localizedDescription)
+            }
+        } else {
+            print("\nTo apply changes, run this command in your terminal:")
+            print("source \(filePath)")
+        }
+    }
+    
+    private func isDirectoryInPath(_ directory: String, content: String) -> Bool {
+        let pattern = "export PATH=\"(.*\(directory):.*)\"|export PATH=\"(.*:\(directory).*)\""
+        let regex = try? NSRegularExpression(pattern: pattern, options: [])
+        let range = NSRange(content.startIndex..., in: content)
+        return regex?.firstMatch(in: content, options: [], range: range) != nil
     }
     
     @discardableResult
-    private func runCmd(_ command: String) -> String {
+    private func runCmd(_ command: String) throws -> String {
         let task = Process()
         let pipe = Pipe()
         
         task.standardOutput = pipe
         task.standardError = pipe
         task.arguments = ["-c", command]
-        task.launchPath = "/bin/\(self.shell)"
-        task.standardInput = nil
-        task.launch()
+        task.executableURL = URL(fileURLWithPath: "/bin/\(shell.rawValue)")
+        
+        try task.run()
+        task.waitUntilExit()
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
-        let output = String(data: data, encoding: .utf8)!
-        
-        return output
-    }
-}
-
-// MARK: - Public Methods
-
-extension Pathman {
-    func addPath(directory: String) {
-        var content = readRcFile(from: filePath)
-        let newPathLine = "\nexport PATH=\"\(directory):$PATH\""
-        content.append(newPathLine)
-        writeRcFile(content: content)
-        runCmd("source \(filePath)")
-        print("Directory added to PATH in \(shell.rcFileName)")
-    }
-    
-    func removeFromPath(directory: String) {
-        var content = readRcFile(from: filePath)
-        let pathPrefix = "export PATH=\""
-        let pathSuffix = ":$PATH\""
-        
-        guard let range = content.range(of: pathPrefix),
-              let endRange = content.range(of: pathSuffix, options: .backwards),
-              let pathRange = content.range(of: directory, options: .literal, range: range.upperBound..<endRange.lowerBound) else {
-            print("Error: Failed to remove directory '\(directory)' from PATH in \(shell.rcFileName): Directory not found in PATH")
-            return
-        }
-        
-        content.replaceSubrange(pathRange, with: "")
-        
-        let finalContent = content
-            .replacingOccurrences(of: "export PATH=\":$PATH\"", with: "")
-            .replacingOccurrences(of: "\n+", with: "\n", options: .regularExpression)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        writeRcFile(content: finalContent)
-        runCmd("source \(filePath)")
-        print("Directory removed from PATH in \(shell.rcFileName)")
+        return String(data: data, encoding: .utf8) ?? ""
     }
 }
